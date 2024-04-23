@@ -1,0 +1,145 @@
+#include <LiquidCrystal.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+#include <ESP32Servo.h>
+
+#define SERVO_PIN 2 // Define the pin connected to the servo
+Servo myServo;
+
+const char* ssid = "Home";
+const char* password = "s1234567890f";
+
+#define BOTtoken "7041830831:AAFK0FdiCHVRNDcmteE6I0vcjJq6KoMZCsQ"  
+#define CHAT_ID "5767722770"
+#define CHAT_ID2 "1536405398"
+#define CHAT_ID3 "1317340636"
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
+
+LiquidCrystal lcd(22, 21, 5, 18, 23, 19); // Define LCD pins
+
+const int thermistorPin1 = 4; // First thermistor connected to D4
+const int thermistorPin2 = 14; // Second thermistor connected to D14
+const int mq2Pin = 33; // MQ-2 gas sensor connected to D33
+
+void setup() {
+  Serial.begin(9600);
+  lcd.begin(16, 2); // Initialize LCD with 16 columns and 2 rows
+  lcd.clear(); // Clear LCD screen
+  lcd.print("T1=_ T2=_"); // Print initial message on the first line of LCD
+
+  Serial.print("Connecting Wifi: ");
+  Serial.println(ssid);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT); // Add root certificate for api.telegram.org
+
+    while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  pinMode(PHOTO_RESISTOR_PIN, INPUT);
+  myServo.attach(SERVO_PIN); // Attach the servo to the specified pin
+
+}
+
+void loop() {
+  // Read the analog value from the first thermistor
+  int rawValue1 = analogRead(thermistorPin1);
+  
+  // Convert the raw value to resistance for first thermistor
+  float resistance1 = rawToResistance(rawValue1);
+  
+  // Calculate the temperature using the Steinhart-Hart equation for first thermistor
+  float temperature1 = steinhartHart(resistance1);
+
+  // Read the analog value from the second thermistor
+  int rawValue2 = analogRead(thermistorPin2);
+  
+  // Convert the raw value to resistance for second thermistor
+  float resistance2 = rawToResistance(rawValue2);
+  
+  // Calculate the temperature using the Steinhart-Hart equation for second thermistor
+  float temperature2 = steinhartHart(resistance2);
+
+  // Read the analog value from the MQ-2 gas sensor
+  int mq2Value = analogRead(mq2Pin);
+  
+  // Convert MQ-2 sensor value to parts per million (ppm) of natural gas
+  float naturalGasPPM = mq2ToPPM(mq2Value);
+
+  // Print the MQ-2 gas sensor reading on the serial monitor
+  Serial.print("MQ-2 Gas Sensor Reading: ");
+  Serial.print(mq2Value);
+  Serial.println(" ppm of natural gas");
+
+  // Calculate the temperature difference between the two thermistors
+  float temperatureDifference = temperature1 - temperature2;
+
+  // Update LCD with temperature readings and difference
+  lcd.setCursor(0, 0); // Move cursor to the first line of LCD
+  lcd.print("T1="); // Print "T1=" on LCD
+  lcd.print(temperature1); // Print temperature reading of first thermistor on LCD
+  lcd.print(" T2="); // Print " T2=" on LCD
+  lcd.print(temperature2); // Print temperature reading of second thermistor on LCD
+
+  lcd.setCursor(0, 1); // Move cursor to the second line of LCD
+  lcd.print("Diff: "); // Print "Diff: " on LCD
+  lcd.print(temperatureDifference); // Print temperature difference on LCD
+  lcd.print(" C "); // Print "C NatGas: " on LCD
+
+  int photoResistorValue = analogRead(PHOTO_RESISTOR_PIN);
+  Serial.print("Photoresistor Value: ");
+  Serial.println(photoResistorValue);
+
+  if(naturalGasPPM>500){
+    bot.sendMessage(CHAT_ID, "Hi,The code is working", "");
+    bot.sendMessage(CHAT_ID2, "Hi,The code is working", "");
+    bot.sendMessage(CHAT_ID3, "Hi,The code is working", "");
+  }
+
+   if(steinhart2-steinhart1 < 3 ){
+  myServo.write(90);
+  }
+
+  
+  // Wait for a moment
+  delay(1000);
+}
+
+// Function to convert raw ADC value to resistance
+float rawToResistance(int rawValue) {
+  float voltage = rawValue * (3.3 / 4095); // Convert raw value to voltage (assuming 12-bit ADC)
+  float resistance = (3.3 * 10000) / voltage - 10000; // Convert voltage to resistance using voltage divider equation
+  return resistance;
+}
+
+// Steinhart-Hart equation coefficients
+const float A = 0.001129148;
+const float B = 0.000234125;
+const float C = 0.0000000876741;
+
+// Function to calculate temperature using Steinhart-Hart equation
+float steinhartHart(float resistance) {
+  float invKelvin = A + B * log(resistance) + C * pow(log(resistance), 3);
+  float temperature = 1 / invKelvin - 273.15; // Convert inverse Kelvin to Celsius
+  return temperature;
+}
+
+// Function to convert MQ-2 sensor value to parts per million (ppm) of natural gas
+float mq2ToPPM(int mq2Value) {
+  // Assuming a linear relationship between sensor output and gas concentration (not very accurate)
+  float naturalGasPPM = mq2Value / 4.88; // Modify the divisor based on sensor calibration
+  return naturalGasPPM;
+
+
+}
